@@ -120,15 +120,23 @@ class OsxDisk (Disk):
 			self.device_node = self.device_node.replace("/dev/disk", "/dev/rdisk")
 
 		self.is_mounted = 'mounted' in self.attrs and self.attrs['mounted'] == 'Yes'
-		self.name = self.attrs['device_media_name']
-		
+
+		if 'device_media_name' in self.attrs:
+			self.name = self.attrs['device_media_name']
+		elif self.parent:
+			self.name = self.parent.name
+
 		if 'volume_name' in self.attrs and not self.attrs['volume_name'] == self.name:
 			self.name = '%s (%s)' % (self.name, self.attrs['volume_name'])
 		
 		if 'mount_point' in self.attrs:
 			self.mount_point = self.attrs['mount_point']
-		
-		m = re.match ('.*\((\d+) Bytes\).*', self.attrs['total_size'])
+
+		if 'total_size' in self.attrs:
+			m = re.match ('.*\((\d+) Bytes\).*', self.attrs['total_size'])
+		else:
+			m = re.match ('.*\((\d+) Bytes\).*', self.attrs['disk_size'])
+
 		if m:
 			self.size = float (m.group (1))
 
@@ -152,7 +160,10 @@ class OsxDisk (Disk):
 			self.attrs['device_identifier'] == self.attrs['part_of_whole'] and \
 			self.attrs['protocol'] == 'USB' and \
 			self.attrs['read_only_media'] == 'No' and \
-			self.attrs['ejectable'] == 'Yes' and \
+			(
+			    ('ejectable' in self.attrs and self.attrs['ejectable'] == 'Yes') or
+				self.attrs['removable_media'] == "Removable"
+			) and \
 			self.attrs['whole'] == 'Yes'
 
 	def unmount (self):
@@ -169,7 +180,11 @@ class OsxDiskManager (DiskManager):
 
 	def get_devices (self):
 		for node in sh ('diskutil list'):
-			device = self.get_device (node)
+			if ' (' in node:
+				device = self.get_device (node.split(' (')[0])
+			else:
+				device = self.get_device (node)
+
 			if device:
 				yield device
 
